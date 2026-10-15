@@ -11,6 +11,7 @@ import {
   useUpdateWorkOrder,
 } from '@/lib/api/generated/api';
 import { Priority, Status, type WorkOrder } from '@/lib/api/generated/model';
+import { t } from '@/lib/i18n/messages';
 
 type Props = { mode: 'create' } | { mode: 'edit'; initial: WorkOrder };
 
@@ -19,8 +20,6 @@ type FieldName = 'title' | 'description' | 'priority' | 'status';
 
 const PRIORITIES = Object.values(Priority);
 const STATUSES = Object.values(Status);
-
-const GENERIC_ERROR = 'Could not save the work order. Please try again.';
 
 /** Narrows a submitted form value to one of the allowed options. */
 function pick<T extends string>(options: readonly T[], value: FormDataEntryValue | null): T {
@@ -63,7 +62,7 @@ export function WorkOrderForm(props: Props) {
   function showError(error: unknown) {
     const apiError = toApiError(error);
     if (!apiError) {
-      setFormError(GENERIC_ERROR);
+      setFormError(t('form.error'));
       return;
     }
     const { message, fieldErrors: all = {} } = apiError.error;
@@ -118,7 +117,7 @@ export function WorkOrderForm(props: Props) {
     <form ref={formRef} onSubmit={onSubmit} aria-busy={submitting} className="max-w-2xl space-y-5">
       <div>
         <label htmlFor="title" className="mb-1 block font-medium">
-          Title (required)
+          {t('form.title')}
         </label>
         <input
           id="title"
@@ -135,7 +134,7 @@ export function WorkOrderForm(props: Props) {
 
       <div>
         <label htmlFor="description" className="mb-1 block font-medium">
-          Description (optional)
+          {t('form.description')}
         </label>
         <textarea
           id="description"
@@ -148,14 +147,14 @@ export function WorkOrderForm(props: Props) {
           {...errorProps('description', 'description-count')}
         />
         <p id="description-count" className="mt-1 text-sm text-slate-700">
-          {descriptionLength} / 2000 characters
+          {t('form.charCount', { count: descriptionLength })}
         </p>
         <FieldError id="description-error" messages={fieldErrors.description} />
       </div>
 
       <div>
         <label htmlFor="priority" className="mb-1 block font-medium">
-          Priority (required)
+          {t('form.priority')}
         </label>
         <select
           id="priority"
@@ -177,7 +176,7 @@ export function WorkOrderForm(props: Props) {
       {initial && (
         <div>
           <label htmlFor="status" className="mb-1 block font-medium">
-            Status (required)
+            {t('form.status')}
           </label>
           <select
             id="status"
@@ -205,13 +204,13 @@ export function WorkOrderForm(props: Props) {
 
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={submitting} aria-busy={submitting} className="btn-primary">
-          {props.mode === 'create' ? 'Create work order' : 'Save changes'}
+          {props.mode === 'create' ? t('form.create') : t('form.save')}
         </button>
         <Link
           href={props.mode === 'create' ? '/' : `/work-orders/${props.initial.id}`}
           className="btn-secondary"
         >
-          Cancel
+          {t('form.cancel')}
         </Link>
       </div>
     </form>

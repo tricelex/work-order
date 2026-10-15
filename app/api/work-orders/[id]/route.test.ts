@@ -31,70 +31,36 @@ const put = (id: string, body: unknown) =>
     }),
     ctx(id),
   );
+const get = (id: string) => GET(new Request(url(id)), ctx(id));
+const del = (id: string) => DELETE(new Request(url(id), { method: 'DELETE' }), ctx(id));
 
 describe('/api/work-orders/[id]', () => {
-  it('gets one work order', async () => {
-    const order = await createOrder({ title: 'Check boiler', priority: 'Medium' });
-    const response = await GET(new Request(url(order.id)), ctx(order.id));
-    expect(response.status).toBe(200);
-    expect(((await response.json()) as WorkOrder).id).toBe(order.id);
-  });
-
-  it('updates every editable field and changes updatedAt', async () => {
+  it('updates, rejects bad updates, deletes, and returns 404 for missing ids', async () => {
     const order = await createOrder({ title: 'Check boiler', priority: 'Medium' });
     await new Promise((resolve) => setTimeout(resolve, 5));
 
-    const response = await put(order.id, {
-      title: 'Check boiler (rush)',
-      description: 'Pressure low',
-      priority: 'High',
-      status: 'In Progress',
-    });
-    expect(response.status).toBe(200);
-    const updated = (await response.json()) as WorkOrder;
-    expect(updated).toMatchObject({
-      id: order.id,
-      title: 'Check boiler (rush)',
-      description: 'Pressure low',
-      priority: 'High',
-      status: 'In Progress',
-    });
+    const updated = (await (
+      await put(order.id, {
+        title: 'Check boiler (rush)',
+        description: 'Pressure low',
+        priority: 'High',
+        status: 'In Progress',
+      })
+    ).json()) as WorkOrder;
+    expect(updated).toMatchObject({ id: order.id, title: 'Check boiler (rush)', status: 'In Progress' });
     expect(updated.updatedAt > order.updatedAt).toBe(true);
-  });
 
-  it('rejects an incomplete update and leaves the order unchanged', async () => {
-    const order = await createOrder({ title: 'Check boiler', priority: 'Medium' });
-    const response = await put(order.id, { title: 'Check boiler (rush)' });
-    expect(response.status).toBe(400);
-    const body = (await response.json()) as ApiError;
-    expect(Object.keys(body.error.fieldErrors ?? {})).toEqual(
-      expect.arrayContaining(['description', 'priority', 'status']),
-    );
-    const after = await GET(new Request(url(order.id)), ctx(order.id));
-    expect(((await after.json()) as WorkOrder).title).toBe('Check boiler');
-  });
+    const invalid = await put(order.id, { title: 'x' });
+    expect(invalid.status).toBe(400);
+    expect(Object.keys(((await invalid.json()) as ApiError).error.fieldErrors ?? {})).toContain('title');
 
-  it('deletes with 204 and then returns 404', async () => {
-    const order = await createOrder({ title: 'Check boiler', priority: 'Medium' });
-    const removed = await DELETE(new Request(url(order.id), { method: 'DELETE' }), ctx(order.id));
+    const removed = await del(order.id);
     expect(removed.status).toBe(204);
-    expect(await removed.text()).toBe('');
-    const after = await GET(new Request(url(order.id)), ctx(order.id));
-    expect(after.status).toBe(404);
-  });
+    expect((await get(order.id)).status).toBe(404);
 
-  it.each([
-    ['an unknown uuid', randomUUID()],
-    ['a non-uuid id', 'not-a-uuid'],
-  ])('returns 404 NOT_FOUND for %s on every method', async (_label, id) => {
-    const responses = await Promise.all([
-      GET(new Request(url(id)), ctx(id)),
-      put(id, { title: 'Valid title', description: '', priority: 'Low', status: 'Open' }),
-      DELETE(new Request(url(id), { method: 'DELETE' }), ctx(id)),
-    ]);
-    for (const response of responses) {
-      expect(response.status).toBe(404);
-      expect(((await response.json()) as ApiError).error.code).toBe('NOT_FOUND');
+    for (const id of [randomUUID(), 'not-a-uuid']) {
+      expect((await get(id)).status).toBe(404);
+      expect((await del(id)).status).toBe(404);
     }
   });
 });

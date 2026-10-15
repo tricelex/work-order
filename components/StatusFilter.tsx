@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import { Status } from '@/lib/api/generated/model';
+import { t } from '@/lib/i18n/messages';
 
 const FILTERS: { label: string; status?: Status }[] = [
-  { label: 'All' },
+  { label: t('list.filterAll') },
   ...Object.values(Status).map((status) => ({ label: status, status })),
 ];
 
 /** Status filter as plain links driven by `?status=`; works without JavaScript. */
 export function StatusFilter({ active }: { active?: Status }) {
   return (
-    <nav aria-label="Filter by status">
+    <nav aria-label={t('list.filterLabel')}>
       <ul className="flex flex-wrap gap-2">
         {FILTERS.map(({ label, status }) => {
           const isActive = status === active;

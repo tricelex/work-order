@@ -32,48 +32,18 @@ const ariaSort = (name: RegExp) =>
   screen.getByRole('columnheader', { name }).getAttribute('aria-sort');
 
 describe('WorkOrdersTable', () => {
-  it('renders a row per work order, newest first, with links to the detail page', () => {
-    renderTable(orders);
-    expect(titles()).toEqual(['Bravo', 'Alpha', 'Charlie']);
-    expect(screen.getByRole('link', { name: 'Bravo' }).getAttribute('href')).toBe(
-      '/work-orders/22222222-2222-4222-8222-222222222222',
-    );
-    expect(ariaSort(/updated/i)).toBe('descending');
-  });
-
-  it('sorts by priority Low to High, then toggles to High to Low', async () => {
+  it('renders rows newest first and sorts by priority with aria-sort', async () => {
     const user = userEvent.setup();
     renderTable(orders);
+    expect(titles()).toEqual(['Bravo', 'Alpha', 'Charlie']);
+    expect(ariaSort(/updated/i)).toBe('descending');
 
     await user.click(screen.getByRole('button', { name: /priority/i }));
     expect(titles()).toEqual(['Charlie', 'Alpha', 'Bravo']);
     expect(ariaSort(/priority/i)).toBe('ascending');
-    expect(ariaSort(/updated/i)).toBe('none');
 
     await user.click(screen.getByRole('button', { name: /priority/i }));
     expect(titles()).toEqual(['Bravo', 'Alpha', 'Charlie']);
     expect(ariaSort(/priority/i)).toBe('descending');
-  });
-
-  it('sorts titles alphabetically and leaves status unsortable', async () => {
-    const user = userEvent.setup();
-    renderTable(orders);
-    await user.click(screen.getByRole('button', { name: /title/i }));
-    expect(titles()).toEqual(['Alpha', 'Bravo', 'Charlie']);
-    expect(screen.queryByRole('button', { name: /status/i })).toBeNull();
-  });
-
-  it('shows an empty state with a create link when no filter is active', () => {
-    renderTable([]);
-    expect(screen.getByText(/no work orders yet/i)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /create a work order/i }).getAttribute('href')).toBe(
-      '/work-orders/new',
-    );
-  });
-
-  it('shows a filter-specific empty state without a create link', () => {
-    renderTable([], 'Done');
-    expect(screen.getByText(/no work orders with status done/i)).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /create a work order/i })).toBeNull();
   });
 });

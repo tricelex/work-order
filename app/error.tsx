@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { t } from '@/lib/i18n/messages';
 
 export default function ErrorPage({
   error,
@@ -15,10 +16,10 @@ export default function ErrorPage({
 
   return (
     <section role="alert">
-      <h1 className="text-2xl font-semibold">Something went wrong</h1>
-      <p className="mt-2">The work orders could not be loaded. Please try again.</p>
+      <h1 className="text-2xl font-semibold">{t('error.title')}</h1>
+      <p className="mt-2">{t('error.body')}</p>
       <button type="button" onClick={() => retry()} className="btn-primary mt-4">
-        Try again
+        {t('error.retry')}
       </button>
     </section>
   );

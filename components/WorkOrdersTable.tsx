@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { PriorityBadge, StatusBadge } from '@/components/Badges';
 import type { Priority, Status, WorkOrder } from '@/lib/api/generated/model';
 import { formatTimestamp } from '@/lib/work-orders/format';
+import { t } from '@/lib/i18n/messages';
 import { workOrdersListOptions } from '@/lib/work-orders/list-query';
 
 const PRIORITY_RANK: Record<Priority, number> = { Low: 0, Medium: 1, High: 2 };
@@ -21,7 +22,7 @@ const PRIORITY_RANK: Record<Priority, number> = { Low: 0, Medium: 1, High: 2 };
 const columns: ColumnDef<WorkOrder>[] = [
   {
     accessorKey: 'title',
-    header: 'Title',
+    header: t('column.title'),
     sortingFn: 'text',
     cell: ({ row }) => (
       <Link
@@ -34,20 +35,20 @@ const columns: ColumnDef<WorkOrder>[] = [
   },
   {
     accessorKey: 'priority',
-    header: 'Priority',
+    header: t('column.priority'),
     sortingFn: (a, b, columnId) =>
       PRIORITY_RANK[a.getValue<Priority>(columnId)] - PRIORITY_RANK[b.getValue<Priority>(columnId)],
     cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
   },
   {
     accessorKey: 'status',
-    header: 'Status',
+    header: t('column.status'),
     enableSorting: false,
     cell: ({ row }) => <StatusBadge status={row.original.status} />,
   },
   {
     accessorKey: 'updatedAt',
-    header: 'Updated (UTC)',
+    header: t('column.updated'),
     sortingFn: 'basic',
     cell: ({ row }) => (
       <time dateTime={row.original.updatedAt}>{formatTimestamp(row.original.updatedAt)}</time>
@@ -80,12 +81,12 @@ export function WorkOrdersTable({ status }: { status?: Status }) {
     return (
       <p className="rounded-md border border-dashed border-slate-400 bg-white p-6 text-center">
         {status ? (
-          `No work orders with status ${status}.`
+          t('list.emptyFiltered', { status })
         ) : (
           <>
-            No work orders yet.{' '}
+            {t('list.empty')}{' '}
             <Link href="/work-orders/new" className="font-medium text-blue-800 underline">
-              Create a work order
+              {t('list.emptyCreate')}
             </Link>
           </>
         )}
@@ -97,7 +98,7 @@ export function WorkOrdersTable({ status }: { status?: Status }) {
     <div className="overflow-x-auto rounded-md border border-slate-300 bg-white">
       <table className="w-full min-w-[40rem] border-collapse text-left">
         <caption className="sr-only">
-          Work orders{status ? ` with status ${status}` : ''}, sortable by title, priority and last updated
+          {status ? t('list.captionFiltered', { status }) : t('list.caption')}
         </caption>
         <thead className="bg-slate-100">
           {table.getHeaderGroups().map((group) => (

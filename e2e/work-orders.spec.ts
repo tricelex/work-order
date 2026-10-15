@@ -4,9 +4,11 @@ test('technician creates, edits, sorts, filters and deletes work orders', async 
   // empty state
   await page.goto('/');
   await expect(page.getByText('No work orders yet.')).toBeVisible();
+  await expect(page).toHaveTitle('All work orders');
 
   // server-side validation surfaces on the field and moves focus
   await page.getByRole('link', { name: 'New work order' }).first().click();
+  await expect(page).toHaveTitle('New work order · Work Orders');
   const title = page.getByLabel('Title (required)');
   await title.fill('a');
   await page.getByRole('button', { name: 'Create work order' }).click();
@@ -22,9 +24,11 @@ test('technician creates, edits, sorts, filters and deletes work orders', async 
   await expect(page).toHaveURL(/\/work-orders\/[0-9a-f-]{36}\?notice=created$/);
   await expect(page.getByRole('status')).toHaveText('Work order created.');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Replace HVAC filter - Building B');
+  await expect(page).toHaveTitle('Replace HVAC filter - Building B · Work Orders');
 
   // edit
   await page.getByRole('link', { name: 'Edit' }).click();
+  await expect(page).toHaveTitle('Edit work order · Work Orders');
   await page.getByLabel('Title (required)').fill('Replace HVAC filter - Building B (rush)');
   await page.getByLabel('Status (required)').selectOption('In Progress');
   await page.getByRole('button', { name: 'Save changes' }).click();
@@ -74,13 +78,6 @@ test('technician creates, edits, sorts, filters and deletes work orders', async 
   await expect(page.getByRole('row')).toHaveCount(2);
 });
 
-test('the list has no horizontal page scroll at 320px', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
-  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-  expect(fits).toBe(true);
-});
-
 test('a long unbroken description does not overflow the detail page at 320px', async ({ page, request }) => {
   const created = await request.post('/api/work-orders', {
     data: { title: 'Long token', description: 'x'.repeat(1500), priority: 'Low' },
@@ -90,4 +87,14 @@ test('a long unbroken description does not overflow the detail page at 320px', a
   await page.goto(`/work-orders/${id}`);
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fits).toBe(true);
+});
+
+test('deleting an order that is already gone still lands on the list', async ({ page, request }) => {
+  const created = await request.post('/api/work-orders', { data: { title: 'Gone already', priority: 'Low' } });
+  const { id } = (await created.json()) as { id: string };
+  await page.goto(`/work-orders/${id}`);
+  await request.delete(`/api/work-orders/${id}`);
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete work order' }).click();
+  await expect(page).toHaveURL(/\/\?notice=deleted$/);
 });

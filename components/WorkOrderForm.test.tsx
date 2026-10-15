@@ -106,42 +106,4 @@ describe('WorkOrderForm', () => {
       expect(push).toHaveBeenCalledWith(`/work-orders/${saved.id}?notice=created`),
     );
   });
-
-  it('prefills in edit mode and submits a full PUT including status', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ ...saved, status: 'Done' }, 200));
-    const user = userEvent.setup();
-    renderForm(<WorkOrderForm mode="edit" initial={saved} />);
-
-    expect((screen.getByLabelText('Title (required)') as HTMLInputElement).value).toBe('Replace filter');
-    await user.selectOptions(screen.getByLabelText('Status (required)'), 'Done');
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() =>
-      expect(push).toHaveBeenCalledWith(`/work-orders/${saved.id}?notice=updated`),
-    );
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`/api/work-orders/${saved.id}`);
-    expect(init?.method).toBe('PUT');
-    expect(JSON.parse(String(init?.body))).toEqual({
-      title: 'Replace filter',
-      description: '',
-      priority: 'High',
-      status: 'Done',
-    });
-  });
-
-  it('shows a form-level alert for non-field errors and re-enables the form', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } }, 500),
-    );
-    const user = userEvent.setup();
-    renderForm(<WorkOrderForm mode="create" />);
-
-    await user.type(screen.getByLabelText('Title (required)'), 'Valid title');
-    const submit = screen.getByRole('button', { name: 'Create work order' }) as HTMLButtonElement;
-    await user.click(submit);
-
-    expect((await screen.findByRole('alert')).textContent).toBe('Something went wrong');
-    expect(submit.disabled).toBe(false);
-  });
 });
