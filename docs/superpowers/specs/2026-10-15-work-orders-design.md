@@ -17,7 +17,7 @@ Non-goals: database/ORM, auth, uploads, analytics, real-time, pagination, text s
 | 3 | `src/api/generated/` | **`lib/api/generated/`.** Repo has no `src/`; `app/` is at the root |
 | 4 | `@tanstack/react-table` unspecified | **Pin 8.21.3.** Latest is 9.x, which reworked the API; the PRD's `getCoreRowModel`/`getSortedRowModel` are v8 |
 | 5 | Playwright optional | **Included.** One happy path, `npm run e2e` |
-| 6 | Hey API version "pin exact" | Pin `@hey-api/openapi-ts` at exact `0.99.0` (current at writing). TypeScript must stay on 5.x: TypeScript 7 breaks this Hey API version |
+| 6 | Hey API (`@hey-api/openapi-ts`) for codegen | **Orval** (`orval`, pinned exact `8.43.0`) at the user's request: React Query hooks and Zod from `openapi.yaml`. Needs one small hand-written fetch wrapper (`lib/api/fetcher.ts`, Orval's "mutator") so functions return plain data and non-2xx responses throw |
 | 7 | `error.tsx` with a retry button | Next 16.4 passes `retry` (not `reset`) to `error.tsx` |
 | 8 | Next font defaults in the scaffold | Use the system font stack (no build-time Google Fonts fetch); dark-mode CSS from the scaffold is removed (non-goal) |
 
@@ -25,7 +25,7 @@ Everything else (D1-D14, routes, the four client components, store behavior, acc
 
 ## 3. Stack
 
-Next.js 16.4.1 (already installed), React 19.3, TypeScript `strict`, Tailwind 4 (existing `@tailwindcss/turbopack` rule), `@tanstack/react-query`, `@tanstack/react-table@8.21.3`, `@hey-api/openapi-ts@0.99.0`, `zod` 4.x (the version the Hey API Zod plugin targets), `server-only`. Dev: Vitest 5 + `@testing-library/react` + `@testing-library/user-event` + jsdom, `tsx`, `@playwright/test`. UUIDs via `node:crypto` `randomUUID`. No other runtime dependencies. `engines.node` set to 24.
+Next.js 16.4.1 (already installed), React 19.3, TypeScript `strict`, Tailwind 4 (existing `@tailwindcss/turbopack` rule), `@tanstack/react-query`, `@tanstack/react-table@8.21.3`, `orval@8.43.0`, `zod` 4.x (the version Orval's Zod output targets), `server-only`. Dev: Vitest 5 + `@testing-library/react` + `@testing-library/user-event` + jsdom, `tsx`, `@playwright/test`. UUIDs via `node:crypto` `randomUUID`. No other runtime dependencies. `engines.node` set to 24.
 
 **Verification rule:** generated identifiers (`...Options`, `...QueryKey`, `...Mutation`, `z...` schemas, error typing, client base-URL config call) are read from the installed version's docs and the actual output in `lib/api/generated/`. Never assume names. `params` and `searchParams` are Promises: always `await`. Read the relevant guide in `node_modules/next/dist/docs/` before writing Next-specific code (per `AGENTS.md`).
 
@@ -50,7 +50,7 @@ D1-D14 are unchanged from the PRD §4, restated:
 
 ## 5. Contract and codegen
 
-`openapi.yaml` (repo root, OpenAPI 3.1; fall back to 3.0 only if the Zod plugin requires it), `servers: [{ url: /api }]`.
+`openapi.yaml` (repo root, OpenAPI 3.1), `servers: [{ url: /api }]`.
 
 **Schemas**
 
@@ -75,7 +75,9 @@ D1-D14 are unchanged from the PRD §4, restated:
 
 All error responses use `ApiError`. `id` and `updatedAt` are server-owned and never accepted from clients.
 
-**Codegen:** `openapi-ts.config.ts`, input `openapi.yaml`, output `lib/api/generated/`, plugins limited to TypeScript types, SDK, fetch client, TanStack Query (React) and Zod. `npm run generate:api` must reproduce the committed output with no diff. The SDK base URL is `/api` (emitted from `servers`) and the SDK is used from the browser only. Generated files are never edited.
+**Codegen:** `orval.config.ts` with two outputs from `openapi.yaml`, both into `lib/api/generated/`: (1) `client: 'react-query'`, `httpClient: 'fetch'`, `baseUrl: '/api'`, models in `model/`, suspense hooks enabled, and `override.fetch.includeHttpResponseReturnType: false` so generated functions return plain data; (2) `client: 'zod'` for per-operation Zod schemas. `npm run generate:api` (`rm -rf lib/api/generated && orval`) must reproduce the committed output with no diff. Generated files are never edited.
+
+**Mutator (`lib/api/fetcher.ts`, hand-written, outside the generated folder):** `customFetch<T>(url, options)` calls `fetch`, returns the parsed JSON body (`undefined` for 204), and throws `ApiRequestError { status, body }` on non-2xx. It also exports `ErrorType` (so generated hooks type errors as `ApiRequestError`) and `toApiError(error): ApiError | null`, which the form uses to read `fieldErrors`. Orval does not generate Zod for error bodies or standalone enum/model schemas, so the form relies on this guard and on the generated `Status`/`Priority` constants.
 
 ## 6. Server
 
@@ -91,7 +93,7 @@ All error responses use `ApiError`. `id` and `updatedAt` are server-owned and ne
 
 Behavior:
 - Missing file means an empty list; `data/` is created on first write.
-- Reads validate the file shape with the **generated `WorkOrder` Zod schema** (no hand-written duplicate). Corrupt or invalid content throws a descriptive error and is never silently reset.
+- Reads validate the file shape with the **generated `ListWorkOrdersResponse` Zod schema** (an array of work orders) (no hand-written duplicate). Corrupt or invalid content throws a descriptive error and is never silently reset.
 - Mutations are read-modify-write serialized through a module-level promise queue.
 - Writes go to `<file>.tmp` then `rename`; JSON pretty-printed with 2 spaces.
 - `id` (`randomUUID`) and `updatedAt` (`new Date().toISOString()`) are generated only inside store mutation functions, set on create and every update.
@@ -121,7 +123,7 @@ Flow per request:
 
 | Route | Type | Behavior |
 |---|---|---|
-| `/` | Server page + Client table | `await searchParams`; parse `status` with the generated Zod `Status` schema (invalid means All). Prefetch with generated `listWorkOrders` query options for `{ query: { status } }`, overriding only `queryFn` to call `listOrders({ status })` so the key matches the browser's. Render `StatusFilter`, `NoticeBanner`, then `<HydrationBoundary>` with `WorkOrdersTable` |
+| `/` | Server page + Client table | `await searchParams`; parse `status` with the generated Zod `Status` schema (invalid means All). Prefetch with the generated `getListWorkOrdersSuspenseQueryOptions` for `{ status }`, overriding only `queryFn` to call `listOrders({ status })` so the key matches the browser's. Render `StatusFilter`, `NoticeBanner`, then `<HydrationBoundary>` with `WorkOrdersTable` |
 | `/work-orders/new` | Server page + Client form | `WorkOrderForm` in create mode |
 | `/work-orders/[id]` | Server | Reads the store; `notFound()` if missing; full detail, Edit link, `DeleteWorkOrderButton`, notice banner |
 | `/work-orders/[id]/edit` | Server page + Client form | Reads the store; passes `initial` to `WorkOrderForm` in edit mode; `notFound()` if missing |
@@ -174,7 +176,7 @@ Tailwind only, mobile-first, readable at 320px, max-width container. Everything 
 
 ```
 openapi.yaml
-openapi-ts.config.ts
+orval.config.ts
 .gitattributes            (marks lib/api/generated as generated)
 playwright.config.ts  vitest.config.ts
 app/
@@ -186,7 +188,7 @@ components/
   WorkOrdersTable.tsx  WorkOrderForm.tsx  DeleteWorkOrderButton.tsx
 lib/
   work-orders/ store.ts  format.ts
-  api/ responses.ts  generated/   (committed codegen, never hand-edited)
+  api/ responses.ts  parse-body.ts  fetcher.ts (Orval mutator)  generated/ (committed codegen, never hand-edited)
   query/ get-query-client.ts  providers.tsx
 scripts/seed.ts
 e2e/ work-orders.spec.ts
@@ -224,7 +226,7 @@ Small single-purpose modules; no barrel files, no `utils.ts`. Scripts: `dev`, `b
 ## 13. Build order (about 6h)
 
 1. Scaffold: config fix (remove `cacheComponents`/`partialPrefetching`), remove `pnpm-workspace.yaml`, deps, scripts, Vitest, gitignore/gitattributes.
-2. `openapi.yaml`, Hey API config, generate, inspect output.
+2. `openapi.yaml`, Orval config, `lib/api/fetcher.ts`, generate, inspect output.
 3. Store (+ tests).
 4. Route Handlers (+ tests).
 5. Seed script.

@@ -4,46 +4,46 @@
 
 **Goal:** Build a Next.js App Router app to manage technician Work Orders (list with sorting and status filter, create, edit, delete, detail) with file-JSON persistence, driven by a contract-first OpenAPI spec.
 
-**Architecture:** `openapi.yaml` generates types, a fetch SDK, TanStack Query options and Zod schemas (Hey API) into `lib/api/generated/`. Route Handlers validate with the generated Zod schemas and call a server-only file store. The list page prefetches into a per-request QueryClient (store as `queryFn`) and hydrates a client TanStack Table; detail and edit pages read the store directly; mutations run in four client components and invalidate list queries.
+**Architecture:** `openapi.yaml` generates types, fetch functions, TanStack Query hooks and Zod schemas (Orval) into `lib/api/generated/`; a small hand-written wrapper (`lib/api/fetcher.ts`) makes the generated functions return plain data and throw on non-2xx. Route Handlers validate with the generated Zod schemas and call a server-only file store. The list page prefetches into a per-request QueryClient (store as `queryFn`) and hydrates a client TanStack Table; detail and edit pages read the store directly; mutations (generated hooks) run in four client components and invalidate list queries.
 
-**Tech Stack:** Next.js 16.4.1 (App Router), React 19.3, TypeScript 5.x strict, Tailwind 4, TanStack Query 5, TanStack Table 8.21.3, Hey API openapi-ts 0.99.0, Zod 4, Vitest 5 + Testing Library + jsdom, Playwright, npm.
+**Tech Stack:** Next.js 16.4.1 (App Router), React 19.3, TypeScript 5.x strict, Tailwind 4, TanStack Query 5, TanStack Table 8.21.3, Orval 8.43.0, Zod 4, Vitest 5 + Testing Library + jsdom, Playwright, npm.
 
 **Spec:** `docs/superpowers/specs/2026-10-15-work-orders-design.md` (source requirements: `PRD.md`). Executors read both.
 
 ## Global Constraints
 
 - Next.js 16.4.1 has breaking changes versus older versions. Read the relevant guide in `node_modules/next/dist/docs/` before writing Next-specific code (`AGENTS.md`). `params` and `searchParams` are Promises: always `await` them. `app/error.tsx` receives `{ error, retry }` (not `reset`).
-- **npm only.** Keep `package-lock.json`. No pnpm files. Runtime deps pinned exact (`--save-exact`). `@tanstack/react-table` exactly `8.21.3`, `@hey-api/openapi-ts` exactly `0.99.0`.
-- **TypeScript must stay on 5.x** (`^5`). TypeScript 7 breaks Hey API 0.99.0 (`ts.SyntaxKind` is undefined). Never run `npm i typescript@latest`.
+- **npm only.** Keep `package-lock.json`. No pnpm files. Runtime deps pinned exact (`--save-exact`). `@tanstack/react-table` exactly `8.21.3`, `orval` exactly `8.43.0`.
+- TypeScript stays on 5.x (`^5`); do not run `npm i typescript@latest`.
 - `next.config.ts` must NOT enable `cacheComponents` or `partialPrefetching` (they make `dynamic = 'force-dynamic'` an error).
-- Generated code lives in `lib/api/generated/`, is committed, is never hand-edited, and is excluded from ESLint and coverage.
+- Generated code lives in `lib/api/generated/`, is committed, is never hand-edited, and is excluded from ESLint and coverage. The only hand-written codegen glue is `lib/api/fetcher.ts` (Orval's mutator), outside that folder.
 - Client Components are exactly four: `Providers`, `WorkOrdersTable`, `WorkOrderForm`, `DeleteWorkOrderButton`. Client code never imports the store or `server-only` modules.
 - `dangerouslySetInnerHTML` is forbidden anywhere in the repo.
 - Description renders as plain text only (`whitespace-pre-wrap break-words`).
-- Types come from the generated `WorkOrder`, `Priority`, `Status`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`, `ApiError`. No hand-written duplicates.
+- Types come from the generated `WorkOrder`, `Priority`, `Status`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`, `ApiError` (all from `@/lib/api/generated/model`). No hand-written duplicates.
 - Validation limits: title 2-80, description max 2000, priority `Low|Medium|High`, status `Open|In Progress|Done`. Client form uses only `required` and `maxLength`.
 - Dates display via `Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })` inside `<time dateTime>`; column header "Updated (UTC)".
 - No dark mode, no toast library, no UI library, no pagination, no search. No dead code, no placeholder files, no comments that restate code; short doc comments on exported functions and components.
 - No attribution lines in commit messages. Never commit `.env*` or `data/`.
 
-## Generated API reference (verified against Hey API 0.99.0 output)
+## Generated API reference (verified against Orval 8.43.0 output)
 
 Import paths and names the tasks below rely on:
 
 | Import | Names |
 |---|---|
-| `@/lib/api/generated/types.gen` | `Priority`, `Status`, `WorkOrder`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`, `ApiError` |
-| `@/lib/api/generated/zod.gen` | `zPriority`, `zStatus` (both `z.enum`, `.options` gives the values), `zWorkOrder`, `zCreateWorkOrderBody`, `zUpdateWorkOrderBody`, `zListWorkOrdersQuery`, `zGetWorkOrderPath` (`{ id: uuid }`), `zApiError` |
-| `@/lib/api/generated/@tanstack/react-query.gen` | `listWorkOrdersOptions(options?)`, `listWorkOrdersQueryKey(options?)`, `createWorkOrderMutation()`, `updateWorkOrderMutation()`, `deleteWorkOrderMutation()` |
-| `@/lib/api/generated/client.gen` | `client` (fetch client, **already configured with `baseUrl: '/api'`** from `servers`, so no runtime config call is needed) |
+| `@/lib/api/generated/model` | types `WorkOrder`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`, `ApiError`, `ListWorkOrdersParams`; and for `Priority` and `Status` both a type and a const object (`Status.In_Progress === 'In Progress'`; use `Object.values(Status)` for the list of values) |
+| `@/lib/api/generated/zod` | per-operation schemas: `ListWorkOrdersQueryParams` (`{ status?: enum }`), `ListWorkOrdersResponse` (array of work orders), `CreateWorkOrderBody` (description defaults to `""`), `UpdateWorkOrderBody`, `GetWorkOrderParams` (`{ id: uuid }`) |
+| `@/lib/api/generated/api` | functions `listWorkOrders(params?)`, `createWorkOrder(data)`, `getWorkOrder(id)`, `updateWorkOrder(id, data)`, `deleteWorkOrder(id)` returning plain data; `getListWorkOrdersQueryKey(params?)` (`['/api/work-orders', params?]`); `getListWorkOrdersSuspenseQueryOptions(params?)`; hooks `useListWorkOrdersSuspense`, `useCreateWorkOrder`, `useUpdateWorkOrder`, `useDeleteWorkOrder` |
+| `@/lib/api/fetcher` (hand-written) | `customFetch`, `ApiRequestError`, `ErrorType`, `toApiError` |
 
 Facts to rely on:
-- Mutation variables: create `{ body }`, update `{ path: { id }, body }`, delete `{ path: { id } }`.
-- Mutations use `throwOnError: true`; on a non-2xx the client throws the **parsed JSON error body** (an `ApiError`-shaped object), or the raw text if not JSON. Network failures throw a `TypeError`.
-- The query key is `[{ _id: 'listWorkOrders', baseUrl, query? }]`. `invalidateQueries({ queryKey: listWorkOrdersQueryKey() })` matches every list variant by partial match.
-- The generated client builds a `new Request(url)`. A relative `/api/...` URL throws under Node/jsdom, so tests call `client.setConfig({ baseUrl: 'http://localhost/api', fetch: mock })`.
+- Mutation variables: create `{ data }`, update `{ id, data }`, delete `{ id }`. List params are `{ status }` (not nested under `query`).
+- Requests use the global `fetch` with relative URLs like `/api/work-orders`. Tests stub the global `fetch`.
+- `customFetch` throws `ApiRequestError` (`status`, `body`) on any non-2xx, so generated hooks type their errors as `ApiRequestError`. Network failures throw a `TypeError`.
+- `getListWorkOrdersQueryKey()` with no params is the prefix `['/api/work-orders']`, so `invalidateQueries({ queryKey: getListWorkOrdersQueryKey() })` matches every list variant (and not single-order keys, which are `['/api/work-orders/<id>']`).
 - Zod issue shapes: `too_small` (`minimum`), `too_big` (`maximum`), `invalid_type` (missing or wrong type), `invalid_value` (`values`). `path[0]` is the field name.
-- `zCreateWorkOrderBody` fills `description` with `""` when omitted.
+- Orval generates no Zod for error bodies and no standalone `WorkOrder` or enum schemas, hence `toApiError` and the model constants.
 
 ## Review Focus
 
@@ -101,7 +101,7 @@ export default nextConfig;
 
 ```bash
 npm install --save-exact @tanstack/react-query@5.104.2 @tanstack/react-table@8.21.3 zod@4.6.7 server-only@0.0.1
-npm install -D --save-exact @hey-api/openapi-ts@0.99.0 vitest@5.0.4 tsx@4.23.15 jsdom @vitejs/plugin-react @testing-library/react @testing-library/dom @testing-library/user-event @playwright/test
+npm install -D --save-exact orval@8.43.0 vitest@5.0.4 tsx@4.23.15 jsdom @vitejs/plugin-react @testing-library/react @testing-library/dom @testing-library/user-event @playwright/test
 npx playwright install chromium
 ls node_modules/server-only
 ```
@@ -123,7 +123,7 @@ Edit `package.json` so `scripts` and `engines` read:
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx --conditions=react-server scripts/seed.ts",
-    "generate:api": "openapi-ts",
+    "generate:api": "rm -rf lib/api/generated && orval",
     "e2e": "playwright test"
   },
 ```
@@ -247,13 +247,17 @@ git commit -m "chore: scaffold npm toolchain, disable cache components, add vite
 
 ---
 
-### Task 2: OpenAPI contract and codegen
+### Task 2: OpenAPI contract, fetch wrapper and Orval codegen
 
 **Files:**
-- Create: `openapi.yaml`, `openapi-ts.config.ts`, `lib/api/generated/**` (generated)
+- Create: `openapi.yaml`, `lib/api/fetcher.ts`, `lib/api/fetcher.test.ts`, `orval.config.ts`, `lib/api/generated/**` (generated)
 
 **Interfaces:**
-- Produces: everything in "Generated API reference" above.
+- Produces: everything in "Generated API reference", including from `lib/api/fetcher.ts`:
+  - `customFetch<T>(url: string, options: RequestInit): Promise<T>` returns the parsed JSON body (`undefined` for an empty body) and throws `ApiRequestError` on non-2xx
+  - `class ApiRequestError extends Error { status: number; body: unknown }`
+  - `type ErrorType<E>` (always `ApiRequestError`; Orval uses it to type hook errors)
+  - `toApiError(error: unknown): ApiError | null` returns the `ApiError` body of a failed request, else null
 
 - [ ] **Step 1: Write `openapi.yaml`**
 
@@ -439,47 +443,190 @@ components:
                   type: string
 ```
 
-- [ ] **Step 2: Write `openapi-ts.config.ts`**
+- [ ] **Step 2: Write the failing fetcher tests**
+
+`lib/api/fetcher.test.ts`:
 
 ```ts
-import { defineConfig } from '@hey-api/openapi-ts';
+// @vitest-environment node
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiRequestError, customFetch, toApiError } from './fetcher';
 
-export default defineConfig({
-  input: 'openapi.yaml',
-  output: { path: 'lib/api/generated' },
-  plugins: [
-    '@hey-api/typescript',
-    '@hey-api/sdk',
-    '@hey-api/client-fetch',
-    '@tanstack/react-query',
-    'zod',
-  ],
+function stubFetch(response: Response) {
+  const mock = vi.fn().mockResolvedValue(response);
+  vi.stubGlobal('fetch', mock);
+  return mock;
+}
+
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('customFetch', () => {
+  it('returns the parsed JSON body and forwards the request options', async () => {
+    const mock = stubFetch(json([{ id: 'a' }], 200));
+    await expect(customFetch('/api/work-orders', { method: 'GET' })).resolves.toEqual([{ id: 'a' }]);
+    expect(mock).toHaveBeenCalledWith('/api/work-orders', { method: 'GET' });
+  });
+
+  it('returns undefined for an empty 204 response', async () => {
+    stubFetch(new Response(null, { status: 204 }));
+    await expect(customFetch('/api/work-orders/x', { method: 'DELETE' })).resolves.toBeUndefined();
+  });
+
+  it('throws ApiRequestError with the status and parsed body on non-2xx', async () => {
+    stubFetch(json({ error: { code: 'NOT_FOUND', message: 'Work order not found' } }, 404));
+    const error = await customFetch('/api/work-orders/x', {}).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect(error).toMatchObject({ status: 404, body: { error: { code: 'NOT_FOUND' } } });
+  });
+
+  it('still throws ApiRequestError when the error body is not JSON', async () => {
+    stubFetch(new Response('Bad Gateway', { status: 502 }));
+    const error = await customFetch('/api/work-orders', {}).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect(error).toMatchObject({ status: 502, body: 'Bad Gateway' });
+  });
+});
+
+describe('toApiError', () => {
+  it('returns the body of an ApiRequestError that has the ApiError shape', () => {
+    const body = { error: { code: 'VALIDATION_ERROR', message: 'Nope', fieldErrors: { title: ['Bad'] } } };
+    expect(toApiError(new ApiRequestError(400, body))).toEqual(body);
+  });
+
+  it.each([
+    ['a plain error', new Error('boom')],
+    ['a network TypeError', new TypeError('Failed to fetch')],
+    ['an ApiRequestError with a text body', new ApiRequestError(502, 'Bad Gateway')],
+    ['an ApiRequestError with a malformed body', new ApiRequestError(400, { error: 'nope' })],
+  ])('returns null for %s', (_label, error) => {
+    expect(toApiError(error)).toBeNull();
+  });
 });
 ```
 
-- [ ] **Step 3: Generate and verify the names**
+- [ ] **Step 3: Run to verify it fails**
+
+Run: `npx vitest run lib/api/fetcher.test.ts`
+Expected: FAIL (cannot resolve `./fetcher`).
+
+- [ ] **Step 4: Implement the fetch wrapper**
+
+`lib/api/fetcher.ts`:
+
+```ts
+import type { ApiError } from '@/lib/api/generated/model';
+
+/** Thrown by `customFetch` for every non-2xx response. `body` is the parsed JSON, or the raw text if it was not JSON. */
+export class ApiRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+  ) {
+    super(`Request failed with status ${status}`);
+  }
+}
+
+/** Error type Orval puts on generated hooks: every failed request is an `ApiRequestError`. */
+export type ErrorType<E> = E extends unknown ? ApiRequestError : never;
+
+function parseBody(text: string): unknown {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Orval mutator: performs the request, returns the parsed body, and throws on non-2xx
+ * so generated functions and hooks deal in plain data and errors.
+ */
+export async function customFetch<T>(url: string, options: RequestInit): Promise<T> {
+  const response = await fetch(url, options);
+  const body = parseBody(await response.text());
+  if (!response.ok) throw new ApiRequestError(response.status, body);
+  return body as T;
+}
+
+/** Returns the `ApiError` body of a failed request, or null if the error is anything else. */
+export function toApiError(error: unknown): ApiError | null {
+  if (!(error instanceof ApiRequestError)) return null;
+  const { body } = error;
+  if (typeof body !== 'object' || body === null || !('error' in body)) return null;
+  const detail = body.error;
+  if (typeof detail !== 'object' || detail === null || !('message' in detail)) return null;
+  if (typeof detail.message !== 'string') return null;
+  return body as ApiError;
+}
+```
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `npx vitest run lib/api/fetcher.test.ts`
+Expected: PASS.
+
+- [ ] **Step 6: Write `orval.config.ts`**
+
+```ts
+import { defineConfig } from 'orval';
+
+export default defineConfig({
+  api: {
+    input: './openapi.yaml',
+    output: {
+      target: './lib/api/generated/api.ts',
+      schemas: './lib/api/generated/model',
+      client: 'react-query',
+      httpClient: 'fetch',
+      mode: 'single',
+      baseUrl: '/api',
+      clean: false,
+      override: {
+        mutator: { path: './lib/api/fetcher.ts', name: 'customFetch' },
+        fetch: { includeHttpResponseReturnType: false },
+        query: { useSuspenseQuery: true },
+      },
+    },
+  },
+  zod: {
+    input: './openapi.yaml',
+    output: {
+      target: './lib/api/generated/zod.ts',
+      client: 'zod',
+      mode: 'single',
+      clean: false,
+    },
+  },
+});
+```
+
+- [ ] **Step 7: Generate and verify the names**
 
 Run: `npm run generate:api`
-Expected: `✓ ./lib/api/generated · … files`.
+Expected: both `api` and `zod` report success and `lib/api/generated/` contains `api.ts`, `zod.ts` and `model/`.
 
 Run:
 ```bash
-grep -E "export const (z(Priority|Status|WorkOrder|CreateWorkOrderBody|UpdateWorkOrderBody|ListWorkOrdersQuery|GetWorkOrderPath|ApiError))" lib/api/generated/zod.gen.ts
-grep -E "export const (list|create|update|delete)WorkOrder(sOptions|sQueryKey|Mutation)" "lib/api/generated/@tanstack/react-query.gen.ts"
-grep -n "baseUrl: '/api'" lib/api/generated/client.gen.ts
+grep -E "^export (const|function) (listWorkOrders|createWorkOrder|getWorkOrder|updateWorkOrder|deleteWorkOrder|getListWorkOrdersQueryKey|getListWorkOrdersSuspenseQueryOptions|useListWorkOrdersSuspense|useCreateWorkOrder|useUpdateWorkOrder|useDeleteWorkOrder)\b" lib/api/generated/api.ts | cut -c1-90
+grep -E "^export const (ListWorkOrdersQueryParams|ListWorkOrdersResponse|CreateWorkOrderBody|UpdateWorkOrderBody|GetWorkOrderParams) " lib/api/generated/zod.ts
+grep -n "from '../fetcher'\|\`/api/work-orders\`" lib/api/generated/api.ts | head -4
 ```
-Expected: every name in the "Generated API reference" table is found and the client's `baseUrl` is `'/api'`. If any name differs, stop and update this plan's reference table and later tasks before continuing.
+Expected: every name in the "Generated API reference" table is found, the generated file imports `../fetcher`, and URLs start with `/api/work-orders`. If any name differs, stop and update this plan's reference table and later tasks before continuing.
 
-- [ ] **Step 4: Verify determinism and type safety**
+- [ ] **Step 8: Verify determinism and type safety**
 
-Run: `npm run generate:api && git status --short lib/api/generated | head -3; npm run typecheck && npm run lint`
-Expected: regeneration produces no change relative to the first run; typecheck and lint pass (generated code is lint-ignored but is type-checked).
+Run: `npm run generate:api && git status --short lib/api/generated | head -3; npm run typecheck && npm run lint && npx vitest run lib/api`
+Expected: regenerating produces no change relative to the first run; typecheck, lint and the fetcher tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add openapi.yaml openapi-ts.config.ts lib/api/generated
-git commit -m "feat: add OpenAPI contract and generated client, schemas and query options"
+git add openapi.yaml orval.config.ts lib/api/fetcher.ts lib/api/fetcher.test.ts lib/api/generated package.json package-lock.json
+git commit -m "feat: add OpenAPI contract, Orval codegen and fetch wrapper"
 ```
 
 ---
@@ -491,7 +638,7 @@ git commit -m "feat: add OpenAPI contract and generated client, schemas and quer
 - Test: `lib/work-orders/store.test.ts`
 
 **Interfaces:**
-- Consumes: `zWorkOrder`; types `WorkOrder`, `Status`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`.
+- Consumes: `ListWorkOrdersResponse` (Zod array of work orders); types `WorkOrder`, `Status`, `CreateWorkOrderInput`, `UpdateWorkOrderInput`.
 - Produces (all server-only):
   - `listOrders(filter?: { status?: Status }): Promise<WorkOrder[]>` (newest `updatedAt` first)
   - `getOrder(id: string): Promise<WorkOrder | null>`
@@ -625,10 +772,8 @@ import type {
   Status,
   UpdateWorkOrderInput,
   WorkOrder,
-} from '@/lib/api/generated/types.gen';
-import { zWorkOrder } from '@/lib/api/generated/zod.gen';
-
-const fileSchema = z.array(zWorkOrder);
+} from '@/lib/api/generated/model';
+import { ListWorkOrdersResponse } from '@/lib/api/generated/zod';
 
 /** Resolves the data file path at call time so tests can point it at a temp file. */
 function filePath(): string {
@@ -651,7 +796,7 @@ async function readAll(): Promise<WorkOrder[]> {
   } catch {
     throw new Error(`Work orders file ${file} is not valid JSON`);
   }
-  const parsed = fileSchema.safeParse(json);
+  const parsed = ListWorkOrdersResponse.safeParse(json);
   if (!parsed.success) {
     throw new Error(`Work orders file ${file} has an invalid shape:\n${z.prettifyError(parsed.error)}`);
   }
@@ -758,7 +903,7 @@ git commit -m "feat: add atomic, queue-serialized JSON work order store"
 - Test: `app/api/work-orders/route.test.ts`, `app/api/work-orders/[id]/route.test.ts`
 
 **Interfaces:**
-- Consumes: store functions (Task 3); `zListWorkOrdersQuery`, `zCreateWorkOrderBody`, `zUpdateWorkOrderBody`, `zGetWorkOrderPath`.
+- Consumes: store functions (Task 3); `ListWorkOrdersQueryParams`, `CreateWorkOrderBody`, `UpdateWorkOrderBody`, `GetWorkOrderParams`.
 - Produces:
   - `lib/api/responses.ts`: `json<T>(body: T, status?: number): Response`, `noContent(): Response`, `apiError(status: number, code: ApiError['error']['code'], message: string, fieldErrors?: Record<string, string[]>): Response`, `validationError(error: ZodError): Response`, `serverError(error: unknown): Response`
   - `lib/api/parse-body.ts`: `parseBody<S extends z.ZodType>(request: Request, schema: S): Promise<{ data: z.output<S> } | { response: Response }>` (handles `INVALID_JSON`, trims `title`, validates)
@@ -774,7 +919,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ApiError, WorkOrder } from '@/lib/api/generated/types.gen';
+import type { ApiError, WorkOrder } from '@/lib/api/generated/model';
 import { listOrders, replaceAllOrders } from '@/lib/work-orders/store';
 import { GET, POST } from './route';
 
@@ -889,7 +1034,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ApiError, WorkOrder } from '@/lib/api/generated/types.gen';
+import type { ApiError, WorkOrder } from '@/lib/api/generated/model';
 import { createOrder } from '@/lib/work-orders/store';
 import { DELETE, GET, PUT } from './route';
 
@@ -994,7 +1139,7 @@ Expected: FAIL (cannot resolve `./route`).
 
 ```ts
 import type { ZodError } from 'zod';
-import type { ApiError } from '@/lib/api/generated/types.gen';
+import type { ApiError } from '@/lib/api/generated/model';
 
 type ErrorCode = ApiError['error']['code'];
 type Issue = ZodError['issues'][number];
@@ -1100,8 +1245,8 @@ export async function parseBody<S extends z.ZodType>(
 Create `app/api/work-orders/route.ts`:
 
 ```ts
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
-import { zCreateWorkOrderBody, zListWorkOrdersQuery } from '@/lib/api/generated/zod.gen';
+import type { WorkOrder } from '@/lib/api/generated/model';
+import { CreateWorkOrderBody, ListWorkOrdersQueryParams } from '@/lib/api/generated/zod';
 import { parseBody } from '@/lib/api/parse-body';
 import { json, serverError, validationError } from '@/lib/api/responses';
 import { createOrder, listOrders } from '@/lib/work-orders/store';
@@ -1112,7 +1257,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const status = new URL(request.url).searchParams.get('status') ?? undefined;
-    const query = zListWorkOrdersQuery.safeParse({ status });
+    const query = ListWorkOrdersQueryParams.safeParse({ status });
     if (!query.success) return validationError(query.error);
     return json<WorkOrder[]>(await listOrders(query.data));
   } catch (error) {
@@ -1123,7 +1268,7 @@ export async function GET(request: Request) {
 /** Creates an `Open` work order. */
 export async function POST(request: Request) {
   try {
-    const body = await parseBody(request, zCreateWorkOrderBody);
+    const body = await parseBody(request, CreateWorkOrderBody);
     if ('response' in body) return body.response;
     return json<WorkOrder>(await createOrder(body.data), 201);
   } catch (error) {
@@ -1137,8 +1282,8 @@ export async function POST(request: Request) {
 Create `app/api/work-orders/[id]/route.ts`:
 
 ```ts
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
-import { zGetWorkOrderPath, zUpdateWorkOrderBody } from '@/lib/api/generated/zod.gen';
+import type { WorkOrder } from '@/lib/api/generated/model';
+import { GetWorkOrderParams, UpdateWorkOrderBody } from '@/lib/api/generated/zod';
 import { parseBody } from '@/lib/api/parse-body';
 import { apiError, json, noContent, serverError } from '@/lib/api/responses';
 import { deleteOrder, getOrder, updateOrder } from '@/lib/work-orders/store';
@@ -1151,7 +1296,7 @@ const notFoundResponse = () => apiError(404, 'NOT_FOUND', 'Work order not found'
 
 /** Resolves the route id, or null when it is not a valid uuid (treated as not found). */
 async function resolveId({ params }: Context): Promise<string | null> {
-  const parsed = zGetWorkOrderPath.safeParse(await params);
+  const parsed = GetWorkOrderParams.safeParse(await params);
   return parsed.success ? parsed.data.id : null;
 }
 
@@ -1171,7 +1316,7 @@ export async function PUT(request: Request, context: Context) {
   try {
     const id = await resolveId(context);
     if (!id) return notFoundResponse();
-    const body = await parseBody(request, zUpdateWorkOrderBody);
+    const body = await parseBody(request, UpdateWorkOrderBody);
     if ('response' in body) return body.response;
     const order = await updateOrder(id, body.data);
     return order ? json<WorkOrder>(order) : notFoundResponse();
@@ -1218,7 +1363,7 @@ git commit -m "feat: add work order route handlers with generated-schema validat
 
 ```ts
 import { randomUUID } from 'node:crypto';
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
+import type { WorkOrder } from '@/lib/api/generated/model';
 import { replaceAllOrders } from '@/lib/work-orders/store';
 
 const seeds: Omit<WorkOrder, 'id'>[] = [
@@ -1382,7 +1527,7 @@ export function formatTimestamp(iso: string): string {
 `components/Badges.tsx`:
 
 ```tsx
-import type { Priority, Status } from '@/lib/api/generated/types.gen';
+import type { Priority, Status } from '@/lib/api/generated/model';
 
 const PRIORITY_STYLES: Record<Priority, string> = {
   Low: 'bg-slate-100 text-slate-900 ring-slate-400',
@@ -1442,7 +1587,7 @@ export function NoticeBanner({ notice }: { notice?: string | string[] }) {
 
 ```tsx
 import { PriorityBadge, StatusBadge } from '@/components/Badges';
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
+import type { WorkOrder } from '@/lib/api/generated/model';
 import { formatTimestamp } from '@/lib/work-orders/format';
 
 /** Full read-only view of one work order. Description is rendered as plain text. */
@@ -1634,7 +1779,7 @@ git commit -m "feat: add layout, query plumbing, badges, notice banner and detai
 - Test: `components/WorkOrdersTable.test.tsx`
 
 **Interfaces:**
-- Consumes: `listWorkOrdersOptions`, `getQueryClient`, `listOrders`, `PriorityBadge`, `StatusBadge`, `formatTimestamp`, `NoticeBanner`, `zStatus`.
+- Consumes: `getListWorkOrdersSuspenseQueryOptions`, `Status` (model constant), `ListWorkOrdersQueryParams`, `getQueryClient`, `listOrders`, `PriorityBadge`, `StatusBadge`, `formatTimestamp`, `NoticeBanner`.
 - Produces:
   - `workOrdersListOptions(status?: Status)`: the one place list query options are built; used by both the server prefetch and the table so keys match.
   - `StatusFilter({ active }: { active?: Status })`
@@ -1645,12 +1790,12 @@ git commit -m "feat: add layout, query plumbing, badges, notice banner and detai
 `lib/work-orders/list-query.ts`:
 
 ```ts
-import { listWorkOrdersOptions } from '@/lib/api/generated/@tanstack/react-query.gen';
-import type { Status } from '@/lib/api/generated/types.gen';
+import { getListWorkOrdersSuspenseQueryOptions } from '@/lib/api/generated/api';
+import type { Status } from '@/lib/api/generated/model';
 
 /** List query options for an optional status filter. Shared by the server prefetch and the table so the keys match. */
 export function workOrdersListOptions(status?: Status) {
-  return listWorkOrdersOptions(status ? { query: { status } } : undefined);
+  return getListWorkOrdersSuspenseQueryOptions(status ? { status } : undefined);
 }
 ```
 
@@ -1663,7 +1808,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import type { Status, WorkOrder } from '@/lib/api/generated/types.gen';
+import type { Status, WorkOrder } from '@/lib/api/generated/model';
 import { workOrdersListOptions } from '@/lib/work-orders/list-query';
 import { WorkOrdersTable } from './WorkOrdersTable';
 
@@ -1764,7 +1909,7 @@ import {
 import Link from 'next/link';
 import { useState } from 'react';
 import { PriorityBadge, StatusBadge } from '@/components/Badges';
-import type { Priority, Status, WorkOrder } from '@/lib/api/generated/types.gen';
+import type { Priority, Status, WorkOrder } from '@/lib/api/generated/model';
 import { formatTimestamp } from '@/lib/work-orders/format';
 import { workOrdersListOptions } from '@/lib/work-orders/list-query';
 
@@ -1919,12 +2064,11 @@ Expected: PASS. If `next/link` throws without a router in jsdom, add `vi.mock('n
 
 ```tsx
 import Link from 'next/link';
-import type { Status } from '@/lib/api/generated/types.gen';
-import { zStatus } from '@/lib/api/generated/zod.gen';
+import { Status } from '@/lib/api/generated/model';
 
 const FILTERS: { label: string; status?: Status }[] = [
   { label: 'All' },
-  ...zStatus.options.map((status) => ({ label: status, status })),
+  ...Object.values(Status).map((status) => ({ label: status, status })),
 ];
 
 /** Status filter as plain links driven by `?status=`; works without JavaScript. */
@@ -1965,7 +2109,7 @@ import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 import { NoticeBanner } from '@/components/NoticeBanner';
 import { StatusFilter } from '@/components/StatusFilter';
 import { WorkOrdersTable } from '@/components/WorkOrdersTable';
-import { zStatus } from '@/lib/api/generated/zod.gen';
+import { ListWorkOrdersQueryParams } from '@/lib/api/generated/zod';
 import { getQueryClient } from '@/lib/query/get-query-client';
 import { workOrdersListOptions } from '@/lib/work-orders/list-query';
 import { listOrders } from '@/lib/work-orders/store';
@@ -1978,8 +2122,8 @@ export default async function HomePage({
   searchParams: Promise<{ status?: string | string[]; notice?: string | string[] }>;
 }) {
   const params = await searchParams;
-  const parsed = zStatus.safeParse(params.status);
-  const status = parsed.success ? parsed.data : undefined;
+  const parsed = ListWorkOrdersQueryParams.safeParse({ status: params.status });
+  const status = parsed.success ? parsed.data.status : undefined;
 
   const queryClient = getQueryClient();
   await queryClient.fetchQuery({
@@ -2024,7 +2168,7 @@ git commit -m "feat: add server-prefetched list page with status filter and sort
 - Test: `components/WorkOrderForm.test.tsx`
 
 **Interfaces:**
-- Consumes: `createWorkOrderMutation`, `updateWorkOrderMutation`, `listWorkOrdersQueryKey`, `zApiError`, `zPriority`, `zStatus`, `getOrder`.
+- Consumes: hooks `useCreateWorkOrder`, `useUpdateWorkOrder`, `getListWorkOrdersQueryKey`; `toApiError`; model constants `Priority`, `Status`; `getOrder`.
 - Produces: `WorkOrderForm(props: { mode: 'create' } | { mode: 'edit'; initial: WorkOrder })` (client).
 
 - [ ] **Step 1: Write the failing tests**
@@ -2036,21 +2180,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { client } from '@/lib/api/generated/client.gen';
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkOrder } from '@/lib/api/generated/model';
 import { WorkOrderForm } from './WorkOrderForm';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
-const fetchMock = vi.fn<(request: Request) => Promise<Response>>();
+const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
   push.mockReset();
   fetchMock.mockReset();
-  client.setConfig({ baseUrl: 'http://localhost/api', fetch: fetchMock });
+  vi.stubGlobal('fetch', fetchMock);
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 const jsonResponse = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -2125,9 +2270,14 @@ describe('WorkOrderForm', () => {
     await user.dblClick(submit);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const request = fetchMock.mock.calls[0][0];
-    expect(request.method).toBe('POST');
-    expect(await request.json()).toEqual({ title: 'Replace filter', description: '', priority: 'High' });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/work-orders');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      title: 'Replace filter',
+      description: '',
+      priority: 'High',
+    });
 
     respond(jsonResponse(saved, 201));
     await waitFor(() =>
@@ -2147,10 +2297,10 @@ describe('WorkOrderForm', () => {
     await waitFor(() =>
       expect(push).toHaveBeenCalledWith(`/work-orders/${saved.id}?notice=updated`),
     );
-    const request = fetchMock.mock.calls[0][0];
-    expect(request.method).toBe('PUT');
-    expect(new URL(request.url).pathname).toBe(`/api/work-orders/${saved.id}`);
-    expect(await request.json()).toEqual({
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`/api/work-orders/${saved.id}`);
+    expect(init?.method).toBe('PUT');
+    expect(JSON.parse(String(init?.body))).toEqual({
       title: 'Replace filter',
       description: '',
       priority: 'High',
@@ -2187,24 +2337,34 @@ Expected: FAIL (cannot resolve `./WorkOrderForm`).
 ```tsx
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { toApiError } from '@/lib/api/fetcher';
 import {
-  createWorkOrderMutation,
-  listWorkOrdersQueryKey,
-  updateWorkOrderMutation,
-} from '@/lib/api/generated/@tanstack/react-query.gen';
-import type { WorkOrder } from '@/lib/api/generated/types.gen';
-import { zApiError, zPriority, zStatus } from '@/lib/api/generated/zod.gen';
+  getListWorkOrdersQueryKey,
+  useCreateWorkOrder,
+  useUpdateWorkOrder,
+} from '@/lib/api/generated/api';
+import { Priority, Status, type WorkOrder } from '@/lib/api/generated/model';
 
 type Props = { mode: 'create' } | { mode: 'edit'; initial: WorkOrder };
 
-const FIELD_NAMES = ['title', 'description', 'priority', 'status'] as const;
-type FieldName = (typeof FIELD_NAMES)[number];
+const FIELD_NAMES: readonly string[] = ['title', 'description', 'priority', 'status'];
+type FieldName = 'title' | 'description' | 'priority' | 'status';
+
+const PRIORITIES = Object.values(Priority);
+const STATUSES = Object.values(Status);
 
 const GENERIC_ERROR = 'Could not save the work order. Please try again.';
+
+/** Narrows a submitted form value to one of the allowed options. */
+function pick<T extends string>(options: readonly T[], value: FormDataEntryValue | null): T {
+  const match = options.find((option) => option === value);
+  if (match === undefined) throw new Error('Unexpected form value');
+  return match;
+}
 
 function FieldError({ id, messages }: { id: string; messages?: string[] }) {
   if (!messages?.length) return null;
@@ -2224,8 +2384,8 @@ export function WorkOrderForm(props: Props) {
   const initial = props.mode === 'edit' ? props.initial : undefined;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const create = useMutation(createWorkOrderMutation());
-  const update = useMutation(updateWorkOrderMutation());
+  const create = useCreateWorkOrder();
+  const update = useUpdateWorkOrder();
   const formRef = useRef<HTMLFormElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -2238,15 +2398,15 @@ export function WorkOrderForm(props: Props) {
   }, [fieldErrors]);
 
   function showError(error: unknown) {
-    const parsed = zApiError.safeParse(error);
-    if (!parsed.success) {
+    const apiError = toApiError(error);
+    if (!apiError) {
       setFormError(GENERIC_ERROR);
       return;
     }
-    const { message, fieldErrors: all = {} } = parsed.data.error;
+    const { message, fieldErrors: all = {} } = apiError.error;
     const entries = Object.entries(all);
-    const known = entries.filter(([name]) => (FIELD_NAMES as readonly string[]).includes(name));
-    const other = entries.filter(([name]) => !(FIELD_NAMES as readonly string[]).includes(name));
+    const known = entries.filter(([name]) => FIELD_NAMES.includes(name));
+    const other = entries.filter(([name]) => !FIELD_NAMES.includes(name));
     setFieldErrors(Object.fromEntries(known));
     const otherMessages = other.flatMap(([, messages]) => messages).join(' ');
     setFormError(otherMessages || (known.length === 0 ? message : null));
@@ -2263,16 +2423,16 @@ export function WorkOrderForm(props: Props) {
       const fields = {
         title: String(data.get('title') ?? ''),
         description: String(data.get('description') ?? ''),
-        priority: zPriority.parse(data.get('priority')),
+        priority: pick(PRIORITIES, data.get('priority')),
       };
       const saved =
         props.mode === 'create'
-          ? await create.mutateAsync({ body: fields })
+          ? await create.mutateAsync({ data: fields })
           : await update.mutateAsync({
-              path: { id: props.initial.id },
-              body: { ...fields, status: zStatus.parse(data.get('status')) },
+              id: props.initial.id,
+              data: { ...fields, status: pick(STATUSES, data.get('status')) },
             });
-      await queryClient.invalidateQueries({ queryKey: listWorkOrdersQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getListWorkOrdersQueryKey() });
       router.push(`/work-orders/${saved.id}?notice=${props.mode === 'create' ? 'created' : 'updated'}`);
     } catch (error) {
       showError(error);
@@ -2338,11 +2498,11 @@ export function WorkOrderForm(props: Props) {
           id="priority"
           name="priority"
           required
-          defaultValue={initial?.priority ?? 'Medium'}
+          defaultValue={initial?.priority ?? Priority.Medium}
           className="field"
           {...errorProps('priority')}
         >
-          {zPriority.options.map((priority) => (
+          {PRIORITIES.map((priority) => (
             <option key={priority} value={priority}>
               {priority}
             </option>
@@ -2364,7 +2524,7 @@ export function WorkOrderForm(props: Props) {
             className="field"
             {...errorProps('status')}
           >
-            {zStatus.options.map((status) => (
+            {STATUSES.map((status) => (
               <option key={status} value={status}>
                 {status}
               </option>
@@ -2399,7 +2559,7 @@ export function WorkOrderForm(props: Props) {
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run components/WorkOrderForm.test.tsx`
-Expected: PASS. If `client.setConfig({ fetch })` fails typecheck, adjust the mock type to what `Config['fetch']` expects (read `lib/api/generated/client/types.gen.ts`); do not edit generated code.
+Expected: PASS.
 
 - [ ] **Step 5: Create and edit pages**
 
@@ -2464,7 +2624,7 @@ git commit -m "feat: add create and edit form with server-side field errors"
 - Modify: `app/work-orders/[id]/page.tsx`
 
 **Interfaces:**
-- Consumes: `deleteWorkOrderMutation`, `listWorkOrdersQueryKey`.
+- Consumes: `useDeleteWorkOrder`, `getListWorkOrdersQueryKey`.
 - Produces: `DeleteWorkOrderButton({ id, title }: { id: string; title: string })` (client). Not unit-tested: jsdom has no `<dialog>.showModal()`; the Playwright test in Task 10 covers it.
 
 - [ ] **Step 1: Implement the component**
@@ -2474,13 +2634,10 @@ git commit -m "feat: add create and edit form with server-side field errors"
 ```tsx
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import {
-  deleteWorkOrderMutation,
-  listWorkOrdersQueryKey,
-} from '@/lib/api/generated/@tanstack/react-query.gen';
+import { getListWorkOrdersQueryKey, useDeleteWorkOrder } from '@/lib/api/generated/api';
 
 /**
  * Delete control with a native modal confirmation dialog (Escape closes it).
@@ -2491,7 +2648,7 @@ export function DeleteWorkOrderButton({ id, title }: { id: string; title: string
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const remove = useMutation(deleteWorkOrderMutation());
+  const remove = useDeleteWorkOrder();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2499,8 +2656,8 @@ export function DeleteWorkOrderButton({ id, title }: { id: string; title: string
     setSubmitting(true);
     setError(null);
     try {
-      await remove.mutateAsync({ path: { id } });
-      await queryClient.invalidateQueries({ queryKey: listWorkOrdersQueryKey() });
+      await remove.mutateAsync({ id });
+      await queryClient.invalidateQueries({ queryKey: getListWorkOrdersQueryKey() });
       router.push('/?notice=deleted');
     } catch {
       setError('Could not delete the work order. Please try again.');
@@ -2750,28 +2907,28 @@ Scripts: `dev`, `build`, `start`, `lint`, `typecheck`, `test`, `e2e`, `seed`, `g
 
 ## API contract and codegen
 
-`openapi.yaml` is the single source of truth. `npm run generate:api` runs Hey API (`@hey-api/openapi-ts`, pinned to an exact pre-1.0 version) and writes types, the SDK, the fetch client, TanStack Query options and Zod schemas to `lib/api/generated/`. Re-run it whenever the spec changes.
+`openapi.yaml` is the single source of truth. `npm run generate:api` runs [Orval](https://orval.dev) (pinned to an exact version) and writes model types, fetch functions, TanStack Query hooks (including suspense variants) and per-operation Zod schemas to `lib/api/generated/`. Re-run it whenever the spec changes. The only hand-written glue is `lib/api/fetcher.ts`, Orval's "mutator": it makes generated functions return plain data and throw `ApiRequestError` on non-2xx, which is what the form reads field errors from.
 
-The generated code is **committed** so reviewers can run the app without a generate step. It is marked `linguist-generated` in `.gitattributes`, excluded from lint and coverage, and never hand-edited: fix `openapi.yaml` or `openapi-ts.config.ts` instead. Running `npm run generate:api` on a clean checkout produces no diff.
+The generated code is **committed** so reviewers can run the app without a generate step. It is marked `linguist-generated` in `.gitattributes`, excluded from lint and coverage, and never hand-edited: fix `openapi.yaml` or `orval.config.ts` instead. Running `npm run generate:api` on a clean checkout produces no diff.
 
 Route Handlers validate with the generated Zod schemas and are typed with the generated types, so a contract change breaks the build rather than production.
 
 ## Testing
 
 ```bash
-npm test      # Vitest: API integration, store, table and form components
+npm test      # Vitest: API integration, store, fetch wrapper, table and form components
 npm run e2e   # Playwright happy path (builds the app, uses a temp data file on port 3100)
 ```
 
-`npx playwright install chromium` is needed once before `npm run e2e`. The Vitest suite is deliberately small: the API flow (create, list, filter, validation, update, delete, 404s), the store (missing file, concurrent writes, corrupt file), table sorting with `aria-sort`, and form error handling. Generated code is not tested directly.
+`npx playwright install chromium` is needed once before `npm run e2e`. The Vitest suite is deliberately small: the API flow (create, list, filter, validation, update, delete, 404s), the store (missing file, concurrent writes, corrupt file), the fetch wrapper, table sorting with `aria-sort`, and form error handling. Generated code is not tested directly.
 
 ## Decisions and trade-offs
 
-- **Contract-first (D1, D4).** One spec drives types, client, hooks and server validation, which removes drift between them.
+- **Contract-first (D1, D4).** One spec drives types, client, hooks and server validation, which removes drift between them. Orval was chosen for its React Query hooks and Zod output. It does not generate Zod for error bodies or standalone enums, so the form uses a small `toApiError` guard and the generated `Status`/`Priority` constants instead.
 - **Status filter, not search (D2, D3).** It is server-rendered, shareable through the URL, works without JavaScript and is trivial to test. Filter options are plain links.
 - **List page (D5, D8).** A Server Component prefetches into a per-request QueryClient using the generated query options with the store as `queryFn` (no HTTP call to itself), then hydrates a client table through `useSuspenseQuery`. There is no loading flash. `staleTime` is 60s to avoid an immediate refetch after hydration. The server creates a new client per request, the browser keeps a singleton.
 - **Detail and edit skip TanStack Query (D6).** They are single reads, so Query adds nothing; they read the store directly in Server Components and keep the client bundle small.
-- **Mutations (D7).** Forms and the delete dialog use the generated mutation options and invalidate every list query (all status variants) before navigating.
+- **Mutations (D7).** Forms and the delete dialog use the generated mutation hooks and invalidate every list query (all status variants) before navigating.
 - **Caching (D9).** `force-dynamic` on data pages and handlers, plus Query `staleTime` and invalidation. Mutable file data must never be served stale. Next's Cache Components are switched off (the scaffold enabled them, which makes `dynamic = 'force-dynamic'` an error). With a real database, tag-based `revalidate` or `use cache` would be the next step.
 - **TanStack Table, limited to sorting.** It earns its place through client-side sorting of title, priority (Low < Medium < High) and last updated, with correct `aria-sort`. Filtering, pagination and column features are deliberately not used. Pinned to v8 because v9 reworked the API.
 - **Persistence (D10).** Writes are atomic (temp file then rename) and mutations run through an in-process promise queue. This is safe for a single Node process only. It does not work on read-only or serverless filesystems or across multiple instances. A database would replace only `lib/work-orders/store.ts`. A corrupt data file raises an error and is never silently reset.
@@ -2779,19 +2936,18 @@ npm run e2e   # Playwright happy path (builds the app, uses a temp data file on 
 - **Dates.** Shown in UTC with a fixed `en-GB` format so server and client output match.
 - **Validation messages.** Zod issues are mapped to readable per-field messages in the `ApiError` shape. The form does not duplicate the schemas; it relies on the server and shows its field errors.
 - **`server-only`.** The store imports it. Vitest aliases it to its empty module; the seed script runs `tsx --conditions=react-server`.
-- **TypeScript stays on 5.x.** Hey API 0.99.0 does not work with TypeScript 7.
 - **npm, not pnpm.**
 - **Cut to fit the timebox:** pagination, text search, authentication, optimistic updates, and component tests for the delete dialog (jsdom lacks `showModal`; the e2e test covers it).
 
 ## Project structure
 
 ```
-openapi.yaml  openapi-ts.config.ts  vitest.config.ts  playwright.config.ts
+openapi.yaml  orval.config.ts  vitest.config.ts  playwright.config.ts
 app/            pages, error/not-found, api/work-orders route handlers (+ tests)
 components/     StatusFilter, Badges, NoticeBanner, WorkOrderDetail (server)
                 WorkOrdersTable, WorkOrderForm, DeleteWorkOrderButton (client)
 lib/
-  api/          responses.ts, parse-body.ts, generated/ (codegen output)
+  api/          responses.ts, parse-body.ts, fetcher.ts (Orval mutator), generated/ (codegen output)
   query/        get-query-client.ts, providers.tsx
   work-orders/  store.ts (server-only), list-query.ts, format.ts
 scripts/seed.ts
