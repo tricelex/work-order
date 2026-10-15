@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { DeleteWorkOrderButton } from '@/components/DeleteWorkOrderButton';
 import { NoticeBanner } from '@/components/NoticeBanner';
 import { WorkOrderDetail } from '@/components/WorkOrderDetail';
 import { getOrder } from '@/lib/work-orders/store';
@@ -25,6 +26,7 @@ export default async function WorkOrderPage({
         <Link href={`/work-orders/${order.id}/edit`} className="btn-secondary">
           Edit
         </Link>
+        <DeleteWorkOrderButton id={order.id} title={order.title} />
       </div>
       <p className="mt-6">
         <Link href="/" className="underline">
