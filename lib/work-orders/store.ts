@@ -21,7 +21,7 @@ async function readAll(): Promise<WorkOrder[]> {
   const file = filePath();
   let raw: string;
   try {
-    raw = await readFile(file, 'utf8');
+    raw = await readFile(/*turbopackIgnore: true*/ file, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
@@ -42,10 +42,10 @@ async function readAll(): Promise<WorkOrder[]> {
 /** Writes atomically: temp file in the same directory, then rename. */
 async function writeAll(items: WorkOrder[]): Promise<void> {
   const file = filePath();
-  await mkdir(path.dirname(file), { recursive: true });
+  await mkdir(/*turbopackIgnore: true*/ path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(items, null, 2)}\n`, 'utf8');
-  await rename(tmp, file);
+  await writeFile(/*turbopackIgnore: true*/ tmp, `${JSON.stringify(items, null, 2)}\n`, 'utf8');
+  await rename(/*turbopackIgnore: true*/ tmp, /*turbopackIgnore: true*/ file);
 }
 
 let queue: Promise<unknown> = Promise.resolve();
