@@ -17,7 +17,9 @@ Non-goals: database/ORM, auth, uploads, analytics, real-time, pagination, text s
 | 3 | `src/api/generated/` | **`lib/api/generated/`.** Repo has no `src/`; `app/` is at the root |
 | 4 | `@tanstack/react-table` unspecified | **Pin 8.21.3.** Latest is 9.x, which reworked the API; the PRD's `getCoreRowModel`/`getSortedRowModel` are v8 |
 | 5 | Playwright optional | **Included.** One happy path, `npm run e2e` |
-| 6 | Hey API version "pin exact" | Pin `@hey-api/openapi-ts` at exact `0.99.0` (current at writing) |
+| 6 | Hey API version "pin exact" | Pin `@hey-api/openapi-ts` at exact `0.99.0` (current at writing). TypeScript must stay on 5.x: TypeScript 7 breaks this Hey API version |
+| 7 | `error.tsx` with a retry button | Next 16.4 passes `retry` (not `reset`) to `error.tsx` |
+| 8 | Next font defaults in the scaffold | Use the system font stack (no build-time Google Fonts fetch); dark-mode CSS from the scaffold is removed (non-goal) |
 
 Everything else (D1-D14, routes, the four client components, store behavior, acceptance checklist) is as in the PRD.
 
@@ -73,7 +75,7 @@ D1-D14 are unchanged from the PRD §4, restated:
 
 All error responses use `ApiError`. `id` and `updatedAt` are server-owned and never accepted from clients.
 
-**Codegen:** `openapi-ts.config.ts`, input `openapi.yaml`, output `lib/api/generated/`, plugins limited to TypeScript types, SDK, fetch client, TanStack Query (React) and Zod. `npm run generate:api` must reproduce the committed output with no diff. The SDK base URL is `/api` and the SDK is used from the browser only. The base URL is set in `Providers` through the generated client's config call, never by editing generated files.
+**Codegen:** `openapi-ts.config.ts`, input `openapi.yaml`, output `lib/api/generated/`, plugins limited to TypeScript types, SDK, fetch client, TanStack Query (React) and Zod. `npm run generate:api` must reproduce the committed output with no diff. The SDK base URL is `/api` (emitted from `servers`) and the SDK is used from the browser only. Generated files are never edited.
 
 ## 6. Server
 
@@ -112,8 +114,8 @@ Flow per request:
 ## 7. Rendering and components
 
 ### Query plumbing (`lib/query/`)
-- `get-query-client.ts`: server gets a new client per request (`React.cache`), browser keeps a singleton; applies D8 defaults.
-- `providers.tsx` (client): `QueryClientProvider`; sets the generated SDK base URL to `/api`.
+- `get-query-client.ts`: server returns a new client on every call (called once per request, so no `React.cache`), browser keeps a singleton; applies D8 defaults.
+- `providers.tsx` (client): `QueryClientProvider`. No SDK base-URL call is needed: the generated client is already configured with `baseUrl: '/api'` from `servers`.
 
 ### Routes
 
@@ -138,7 +140,7 @@ Server Components: pages, `StatusFilter`, `WorkOrderDetail`, `PriorityBadge`, `S
 - Semantic `<table>`, `sr-only` `<caption>`, horizontal-scroll wrapper. Empty state with a create link when no filter is active.
 
 ### WorkOrderForm
-- Props: `mode: 'create' | 'edit'`, optional `initial: WorkOrder`. Fields: title, description (textarea with live character count), priority (select, default Medium); edit mode adds status.
+- Props: `{ mode: 'create' } | { mode: 'edit'; initial: WorkOrder }`. Fields: title, description (textarea with live character count), priority (select, default Medium); edit mode adds status.
 - Client-side validation is limited to `required` and `maxLength`. Server is the source of truth; Zod schemas are not duplicated in the form.
 - Submits via generated `createWorkOrder` / `updateWorkOrder` mutation options.
 - On `400` with `fieldErrors` (body typed as `ApiError`): message under each field (`aria-invalid="true"`, `aria-describedby`), focus moves to the first invalid field, input preserved. Other errors: form-level message in `role="alert"`.
@@ -154,7 +156,7 @@ Tailwind only, mobile-first, readable at 320px, max-width container. Everything 
 
 ## 8. Seed script
 
-`scripts/seed.ts`, run via `npm run seed` (`tsx`). Writes 6-8 realistic technician work orders (e.g. "Replace HVAC filter - Building B") covering every priority and status with varied `updatedAt`, using `replaceAllOrders`; it overwrites the existing file (documented). `data/work-orders.json` is gitignored and the app works with no file. `server-only` is stubbed for the script run (simplest working approach, noted in the README).
+`scripts/seed.ts`, run via `npm run seed` (`tsx`). Writes 6-8 realistic technician work orders (e.g. "Replace HVAC filter - Building B") covering every priority and status with varied `updatedAt`, using `replaceAllOrders`; it overwrites the existing file (documented). `data/work-orders.json` is gitignored and the app works with no file. `server-only` resolves to its empty module via `tsx --conditions=react-server` (no stub file; noted in the README). Vitest aliases it to the same empty module.
 
 ## 9. Testing
 
