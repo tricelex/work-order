@@ -1,26 +1,21 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@utility btn {
+  @apply inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-60;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@utility btn-primary {
+  @apply btn border-blue-700 bg-blue-700 text-white hover:bg-blue-800;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@utility btn-secondary {
+  @apply btn border-slate-400 bg-white text-slate-900 hover:bg-slate-100;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility btn-danger {
+  @apply btn border-red-700 bg-red-700 text-white hover:bg-red-800;
+}
+
+@utility field {
+  @apply block w-full rounded-md border border-slate-500 bg-white px-3 py-2 text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-700 aria-[invalid=true]:border-red-700;
 }
