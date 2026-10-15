@@ -80,3 +80,14 @@ test('the list has no horizontal page scroll at 320px', async ({ page }) => {
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fits).toBe(true);
 });
+
+test('a long unbroken description does not overflow the detail page at 320px', async ({ page, request }) => {
+  const created = await request.post('/api/work-orders', {
+    data: { title: 'Long token', description: 'x'.repeat(1500), priority: 'Low' },
+  });
+  const { id } = (await created.json()) as { id: string };
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(`/work-orders/${id}`);
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  expect(fits).toBe(true);
+});

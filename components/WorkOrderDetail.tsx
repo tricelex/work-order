@@ -11,9 +11,9 @@ export function WorkOrderDetail({ order }: { order: WorkOrder }) {
         <PriorityBadge priority={order.priority} />
         <StatusBadge status={order.status} />
       </div>
-      <dl className="mt-6 grid gap-x-6 gap-y-4 sm:grid-cols-[10rem_1fr]">
+      <dl className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
         <dt className="font-medium text-slate-700">Description</dt>
-        <dd className="whitespace-pre-wrap break-words">
+        <dd className="min-w-0 whitespace-pre-wrap break-words">
           {order.description || <span className="text-slate-700">No description provided.</span>}
         </dd>
         <dt className="font-medium text-slate-700">Last updated (UTC)</dt>
